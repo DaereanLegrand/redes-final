@@ -1,0 +1,7 @@
+#!/bin/bash
+while IFS= read -r word
+do
+    #insert=$(printf "%04d%s%04d%s" "${#word}" "$word" "${#definition}" "$definition")
+    echo "00001$word" | nc 0.0.0.0 9034 &
+done < preGlosa
+
