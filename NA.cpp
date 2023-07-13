@@ -42,7 +42,8 @@ char buf[10000];
 int nbytes;
 std::map<std::string, std::vector<std::string>> storage;
 
-void thread_read(int i)
+void 
+thread_read(int i)
 {
     for(;;){
         // std::cout<<"NA ABOUT TO READ"<<std::endl;
@@ -55,7 +56,7 @@ void thread_read(int i)
         Data.action = buf;
 
         switch(Data.action[0]) {
-            case '1':
+            case '+':
                 std::cout<<"NA create"<<std::endl;
                 nbytes = read(i,buf,4);
                 buf[4] = '\0';
@@ -70,20 +71,55 @@ void thread_read(int i)
                 Data.szData = buf;
 
                 nbytes = read(i, buf, stoi(Data.szData));
-                buf[stoi(Data.szData)]='\0';
+                buf[stoi(Data.szData)] = '\0';
                 Data.data = buf;
 
                 std::cout<<"NA about to push"<<std::endl;
 
                 storage[Data.field].push_back(Data.data);
                 std::cout << "Guardando: " << Data.comb_create() << std::endl;
+                break;
+            
+            case '&':
+                std::cout<<"NA read"<<std::endl;
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.szField = buf;
 
+                nbytes = read(i, buf, stoi(Data.szField));
+                buf[stoi(Data.szField)] = '\0';
+                Data.field = buf;
+
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.szData = buf;
+
+                std::cout << "NA about to push" << std::endl;
+
+                std::string answer;
+                
+                for(int i = 0; i < storage[Data.field].size(); i++){
+                    answer += storage[Data.field][i] + ",";
+                }
+                
+                char szAnswer[10];
+                sprintf(szAnswer, "%06d", answer.length());
+                std::cout << "SIZE OF DATA: " << szAnswer << std::endl;
+                std::cout << "DATA: " << answer << std::endl;
+                std::cout << "SOCKET: " << Data.szData << std::endl;
+                
+                nbytes = write(i, "0000", 4);
+                nbytes = write(i, "%", 1);
+                nbytes = write(i, szAnswer, 6);
+                nbytes = write(i, answer.c_str(), answer.length());
+                nbytes = write(i, Data.szData.c_str(), 4);
                 break;
         }
     }
 }
 
-int main()
+int 
+main()
 {
     struct sockaddr_in stSockAddr;
     int Res;
@@ -127,7 +163,7 @@ int main()
     }
 
     write(SocketFD, "0000", 4);
-    write(SocketFD, "0", 1);
+    write(SocketFD, "@", 1);
 
     std::cout << "NA iniciado" << std::endl;
 

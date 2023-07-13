@@ -36,7 +36,7 @@ struct protocol
 
     std::string comb_read()
     {
-        return idpacket + action + szField + field;
+        return idpacket + action + szField + field + szData;
     }
 };
 
@@ -46,6 +46,7 @@ int NA_num = 0;
 std::hash<std::string> hshr;
 std::vector<std::thread> thrds;
 std::map<int, std::queue<protocol>> queues;
+std::map<std::string, int> identifier;
 std::vector<int> NAsocket;
 
 void *get_in_addr(struct sockaddr *sa)
@@ -67,14 +68,27 @@ write_(int socket)
             protocol Data = queues[socket].front();
             queues[socket].pop();
 
-            std::cout << "About to find id" << std::endl;
-            int id = NAsocket[hshr(Data.field) % NAsocket.size()];
-            std::cout << "Sending to " << NAsocket[hshr(Data.field) % NAsocket.size()] << std::endl;
-            write(id, Data.comb_create().c_str(), Data.comb_create().size());
-            std::cout << "Sent!\n";
+            if (Data.action == "+") {
+                std::cout << "CREATE About to find id" << std::endl;
+                int id = NAsocket[hshr(Data.field) % 4];
+                std::cout << "Sending to " << NAsocket[hshr(Data.field) % 4] << std::endl;
+                write(id, Data.comb_create().c_str(), Data.comb_create().size());
+                std::cout << "Sent!\n";
+            } else if (Data.action == "&") {
+                std::cout << "READ About to find id" << std::endl;
+                int id = NAsocket[hshr(Data.field) % 4];
+                std::cout << "Sending to " << NAsocket[hshr(Data.field) % 4] << std::endl;
+                write(id, Data.comb_read().c_str(), Data.comb_read().size());
+                std::cout << "Sent!\n";
+            }
         }
         mtx.unlock();
     }
+}
+
+void
+read_(int socket){
+    
 }
 
 int main(void)
@@ -86,7 +100,7 @@ int main(void)
     int newfd;                          // newly accept()ed socket descriptor
     struct sockaddr_storage remoteaddr; // client address
     socklen_t addrlen;
-    char buf[1024]; // buffer for client protocol
+    char buf[999999]; // buffer for client protocol
     int nbytes;
     char remoteIP[INET6_ADDRSTRLEN];
     int yes = 1; // for setsockopt() SO_REUSEADDR, below
@@ -217,11 +231,12 @@ int main(void)
                         Data.action = buf;
 
                         switch(Data.action[0]) {
-                            case '0':
+                            case '@': {
                                 NAsocket.push_back(i);
                                 printf("NA creado, socket %d\n", i);
                                 break;
-                            case '1':
+                            }
+                            case '+': {
                                 // std::cout<<"Entrando a case 1"<<std::endl;
                                 //Data.action = "1";
 
@@ -254,6 +269,93 @@ int main(void)
 
                                 mtx.unlock();
                                 break;
+                            }
+                            case '&': {
+                                mtx.lock();
+                                std::cout << "READ FROM CLIENT: " << std::endl;
+
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szField = buf;
+                                std::cout << "Size field: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "Field: " << buf << std::endl;
+                                
+                                // nbytes = read(i, buf, 4);
+                                sprintf(buf, "%04d", i);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Socket: " << buf << std::endl;
+                                
+                                std::cout<<"before pushing"<<std::endl;
+                                queues[i].push(Data);
+
+                                mtx.unlock();
+                                break;
+                            }
+                            case '*': {
+                                mtx.lock();
+
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Size data: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                nbytes = read(i, buf, szD);
+                                buf[szD] = '\0';
+                                Data.data = buf;
+                                std::cout<<"Data: " << buf << std::endl;
+                                
+                                std::cout<<"before pushing"<<std::endl;
+                                queues[i].push(Data);
+
+                                mtx.unlock();
+                                break;
+                            }
+                            case '%': {
+                                mtx.lock();
+                                std::cout << "READ FROM NA: " << std::endl;
+
+                                nbytes = read(i, buf, 6);
+                                buf[6] = '\0';
+                                Data.szField = buf;
+                                //std::cout << "Size field: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                std::cout << "Size field: " << szF << std::endl;
+
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "Field: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Socket: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                
+                                std::cout << "before pushing" << std::endl;
+                                queues[i].push(Data);
+
+                                write(szD, "0000", 4);
+                                write(szD, "%", 1);
+                                write(szD, Data.szField.c_str(), 6);
+                                write(szD, Data.field.c_str(), stoi(Data.szField));
+                                    
+                                std::cout << Data.data << std::endl;
+
+                                mtx.unlock();
+                                break;
+                            }
                         }
 
                     }
