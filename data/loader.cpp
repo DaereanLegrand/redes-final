@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <thread>
 #include <string>
+#include <iostream>
 
 void
 processLine(const char* word, const char* definition, int socket) 
@@ -62,7 +63,7 @@ int main(int argc, char *argv[])
         }
 
         char line[1024];
-        int counterLines = 0;
+        int counterLines = 1;
         while (fgets(line, sizeof(line), file)) {
             char* word = strtok(line, ",");
             char* definition = strtok(NULL, "\n");
@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
 
                 if((counterLines++ % 1000) == 0){
                     close(sock);
+                    return 1;
 
                     sock = socket(AF_INET, SOCK_STREAM, 0);
                     if (sock == -1) {
@@ -102,7 +104,8 @@ int main(int argc, char *argv[])
 
         fclose(file);
     } else {
-        if (!strcmp(argv[1], "read")) {
+        if (!strcmp(argv[1], "readF")) {
+            std::cout<<"Enviando read campo: "<<std::endl;
             char sizeF[256];
             sprintf(sizeF, "%04d", strlen(argv[2]));
 
@@ -131,6 +134,115 @@ int main(int argc, char *argv[])
                     buf[szD] = '\0';
                     char *data = buf;
                     printf("%s\n", data);
+                }
+            }
+        }
+        if (!strcmp(argv[1], "readD")) {
+            std::cout<<"Enviando read data: "<<std::endl;
+            char sizeF[256];
+            sprintf(sizeF, "%04d", strlen(argv[2]));
+
+            write(sock, "0000", 4);
+            write(sock, "*", 1);
+            write(sock, sizeF, 4);
+            write(sock, argv[2], strlen(argv[2]));
+
+            std::cout<<"Size: "<<sizeF<<" Argv: "<<argv[2]<<std::endl;
+
+            int nbytes;
+            char buf[32768];
+            while (true) {
+                if (!(nbytes = read(sock, buf, 4)) <= 0) {
+                    buf[4] = '\0';
+
+                    nbytes = read(sock, buf, 1);
+                    buf[1] = '\0';
+
+                    nbytes = read(sock, buf, 6);
+                    buf[6] = '\0';
+                    char *szData = buf;
+                    
+                    printf("SZDATA: %s\n", szData);
+
+                    int szD = std::stoi(szData);
+                    nbytes = read(sock, buf, szD);
+                    buf[szD] = '\0';
+                    char *data = buf;
+                    printf("%s\n", data);
+                }
+            }
+        }
+        if (!strcmp(argv[1], "updateF")) {
+            std::cout<<"Enviando update Field: "<<std::endl;
+            char sizeF[256];
+            char sizeF2[256];
+            sprintf(sizeF, "%04d", strlen(argv[2]));
+            sprintf(sizeF2, "%04d", strlen(argv[3]));
+
+            write(sock, "0000", 4);
+            write(sock, ")", 1);
+            write(sock, sizeF, 4);
+            write(sock, argv[2], strlen(argv[2]));
+            write(sock, sizeF2, 4);
+            write(sock, argv[3], strlen(argv[3]));
+
+            int nbytes;
+            char buf[32768];
+            while (true) {
+                if (!(nbytes = read(sock, buf, 4)) <= 0) {
+                    buf[4] = '\0';
+
+                    nbytes = read(sock, buf, 1);
+                    buf[1] = '\0';
+
+                    nbytes = read(sock, buf, 6);
+                    buf[6] = '\0';
+                    char *szData = buf;
+                    
+                    printf("SZField: %s\n", szData);
+
+                    int szD = std::stoi(szData);
+                    nbytes = read(sock, buf, szD);
+                    buf[szD] = '\0';
+                    char *data = buf;
+                    printf("Updated: %s\n", data);
+                }
+            }
+        }
+        if (!strcmp(argv[1], "delete")) {
+            std::cout<<"Enviando delete: "<<std::endl;
+            char sizeF[256];
+            char sizeF2[256];
+            sprintf(sizeF, "%04d", strlen(argv[2]));
+            sprintf(sizeF2, "%04d", strlen(argv[3]));
+
+            write(sock, "0000", 4);
+            write(sock, "#", 1);
+            write(sock, sizeF, 4);
+            write(sock, argv[2], strlen(argv[2]));
+            write(sock, sizeF2, 4);
+            write(sock, argv[3], strlen(argv[3]));
+
+            int nbytes;
+            char buf[32768];
+            while (true) {
+                if (!(nbytes = read(sock, buf, 4)) <= 0) {
+                    buf[4] = '\0';
+
+                    nbytes = read(sock, buf, 1);
+                    buf[1] = '\0';
+
+                    nbytes = read(sock, buf, 6);
+                    buf[6] = '\0';
+                    char *szData = buf;
+                    
+                    printf("SZData: %s\n", szData);
+
+                    int szD = std::stoi(szData);
+                    nbytes = read(sock, buf, szD);
+                    buf[szD] = '\0';
+                    char *data = buf;
+                    printf("Deleted: %s\n", data);
                 }
             }
         }

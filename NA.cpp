@@ -15,10 +15,11 @@
 #include <fstream>
 #include <map>
 #include <vector>
+#include <algorithm>
 
 using namespace std;
 
-std::map<std::string, std::vector<std::string>> DATA;
+//std::map<std::string, std::vector<std::string>> DATA;
 
 int NAnumber;
 string fileName;
@@ -46,8 +47,8 @@ void
 thread_read(int i)
 {
     for(;;){
-        // std::cout<<"NA ABOUT TO READ"<<std::endl;
         protocol Data;
+        std::cout<<"Entering NA"<<std::endl;
         nbytes = read(i, buf, 4);
         buf[4] = '\0';
         Data.idPackets=buf;
@@ -55,8 +56,10 @@ thread_read(int i)
         buf[1] = '\0';
         Data.action = buf;
 
+        std::cout<<"ID NA: "<<Data.idPackets<<std::endl;
+
         switch(Data.action[0]) {
-            case '+':
+            case '+':{
                 std::cout<<"NA create"<<std::endl;
                 nbytes = read(i,buf,4);
                 buf[4] = '\0';
@@ -78,10 +81,12 @@ thread_read(int i)
 
                 storage[Data.field].push_back(Data.data);
                 std::cout << "Guardando: " << Data.comb_create() << std::endl;
-                break;
             
-            case '&':
-                std::cout<<"NA read"<<std::endl;
+                break;
+            }
+            
+            case '&': {
+                std::cout<<"NA read field"<<std::endl;
                 nbytes = read(i, buf, 4);
                 buf[4] = '\0';
                 Data.szField = buf;
@@ -114,6 +119,136 @@ thread_read(int i)
                 nbytes = write(i, answer.c_str(), answer.length());
                 nbytes = write(i, Data.szData.c_str(), 4);
                 break;
+            }
+            
+            case '*': {
+                std::cout<<"NA read data"<<std::endl;
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.szData = buf;
+
+                nbytes = read(i, buf, stoi(Data.szData));
+                buf[stoi(Data.szData)] = '\0';
+                Data.data = buf;
+
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.szField = buf;
+
+                std::cout << "NA about to push" << std::endl;
+                std::cout<<"INItiAL DATA: "<<Data.data<<" -----------------------"<<std::endl;
+                std::string answer;
+                for (auto i : storage){
+                    for (int j=0; j<i.second.size(); j++){
+                        std::cout<<"Current data: "<<i.second[j]<<std::endl;
+                        std::string a1=i.second[j];
+                        std::string a2=Data.data;
+                        std::cout<<a1<<" -------- "<<a2<<std::endl;
+                        if("city"==a2){
+                            answer+=a1+",";
+                            std::cout<<"Current answer: "<<answer<<std::endl;
+                        }        
+                    }      
+                }
+                
+                char szAnswer[10];
+                sprintf(szAnswer, "%06d", answer.length());
+                std::cout << "SIZE OF DATA: " << szAnswer << std::endl;
+                std::cout << "DATA: " << answer << std::endl;
+                std::cout << "SOCKET: " << Data.szData << std::endl;
+                
+                nbytes = write(i, "0000", 4);
+                nbytes = write(i, "(", 1);
+                nbytes = write(i, szAnswer, 6);
+                nbytes = write(i, answer.c_str(), answer.length());
+                nbytes = write(i, Data.szField.c_str(), 4);
+                break;
+            }
+
+            case ')': {
+                std::cout<<"NA Update field"<<std::endl;
+
+                //SzNewfield
+                nbytes = read(i,buf,4);
+                buf[4] = '\0';
+                Data.szField = buf;
+                
+                //NewField
+                nbytes = read(i, buf, stoi(Data.szField));
+                buf[stoi(Data.szField)] = '\0';
+                Data.field = buf;
+                
+                //SzField
+                nbytes = read(i,buf,4);
+                buf[4] = '\0';
+                Data.szData = buf;
+
+                //Field
+                nbytes = read(i, buf, stoi(Data.szData));
+                buf[stoi(Data.szData)] = '\0';
+                Data.data = buf;
+                
+                //idClient
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.idClient = buf;
+                std::cout<<"NA about to push"<<std::endl;
+
+                storage[Data.field]=storage[Data.data];
+                storage.erase(Data.data);
+                std::cout << "Actualizando: " << Data.comb_create() << std::endl;
+
+                char szAnswer[10];
+                sprintf(szAnswer, "%06d", Data.field.length());
+                nbytes = write(i, "0000", 4);
+                nbytes = write(i, "$", 1);
+                nbytes = write(i, szAnswer, 6);
+                nbytes = write(i, Data.field.c_str(), Data.field.length());
+                nbytes = write(i, Data.idClient.c_str(), 4);
+                break;
+            }
+
+            case '#' : {
+                std::cout<<"NA Delete"<<std::endl;
+
+                //SzField
+                nbytes = read(i,buf,4);
+                buf[4] = '\0';
+                Data.szField = buf;
+
+                //Field
+                nbytes = read(i, buf, stoi(Data.szField));
+                buf[stoi(Data.szField)] = '\0';
+                Data.field = buf;
+
+                //SzData
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.szData = buf;
+
+                //Data 
+                nbytes = read(i, buf, stoi(Data.szData));
+                buf[stoi(Data.szData)] = '\0';
+                Data.data = buf;
+
+                //idClient
+                nbytes = read(i, buf, 4);
+                buf[4] = '\0';
+                Data.idClient = buf;
+                std::cout<<"NA about to push"<<std::endl;
+
+                storage[Data.field].erase(std::remove_if(storage[Data.field].begin(), storage[Data.field].end(), [&](std::string s){return s==Data.data;}), storage[Data.field].end());
+                std::cout << "Borrando: " << Data.comb_create() << std::endl;
+
+                char szAnswer[10];
+                sprintf(szAnswer, "%06d", Data.field.length());
+                nbytes = write(i, "0000", 4);
+                nbytes = write(i, "{", 1);
+                nbytes = write(i, szAnswer, 6);
+                nbytes = write(i, Data.field.c_str(), Data.field.length());
+                nbytes = write(i, Data.idClient.c_str(), 4);
+                break;
+            }
         }
     }
 }

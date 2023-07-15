@@ -34,9 +34,18 @@ struct protocol
         return idpacket + action + szField + field + szData + data;
     }
 
-    std::string comb_read()
+    std::string comb_readF()
     {
         return idpacket + action + szField + field + szData;
+    }
+
+    std::string comb_readD()
+    {
+        return idpacket + action + szData + data + szField;
+    }
+    std::string comb_updateF()
+    {
+        return idpacket + action + szField + field + szData + data + idClient;
     }
 };
 
@@ -47,7 +56,9 @@ std::hash<std::string> hshr;
 std::vector<std::thread> thrds;
 std::map<int, std::queue<protocol>> queues;
 std::map<std::string, int> identifier;
+std::map<int, std::queue<std::string>> DataRU;
 std::vector<int> NAsocket;
+std::map<int,bool> NAstatus;
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -61,34 +72,51 @@ void *get_in_addr(struct sockaddr *sa)
 void 
 write_(int socket)
 {
-    std::cout << "Before while \n" << queues[socket].size() << std::endl;
     while (true) {
         mtx.lock();
         if (!queues[socket].empty()) {
             protocol Data = queues[socket].front();
             queues[socket].pop();
-
+            int id;
             if (Data.action == "+") {
                 std::cout << "CREATE About to find id" << std::endl;
-                int id = NAsocket[hshr(Data.field) % 4];
-                std::cout << "Sending to " << NAsocket[hshr(Data.field) % 4] << std::endl;
+                id = NAsocket[hshr(Data.field) % NAsocket.size()];
+                std::cout << "Sending to " << NAsocket[hshr(Data.field) % NAsocket.size()] << std::endl;
+                write(id, Data.comb_create().c_str(), Data.comb_create().size());
+                id = NAsocket[(hshr(Data.field)+1) % NAsocket.size()];
                 write(id, Data.comb_create().c_str(), Data.comb_create().size());
                 std::cout << "Sent!\n";
             } else if (Data.action == "&") {
                 std::cout << "READ About to find id" << std::endl;
-                int id = NAsocket[hshr(Data.field) % 4];
-                std::cout << "Sending to " << NAsocket[hshr(Data.field) % 4] << std::endl;
-                write(id, Data.comb_read().c_str(), Data.comb_read().size());
+                if(NAstatus[socket]){ id = NAsocket[hshr(Data.field) % NAsocket.size()];}
+                else { id = NAsocket[(hshr(Data.field) + 1) % NAsocket.size()];}
+                std::cout << "Sending to " << id << std::endl;
+                write(id, Data.comb_readF().c_str(), Data.comb_readF().size());
+                std::cout << "Sent!\n";
+            } else if (Data.action=="*") {
+                for(int i=0; i<NAsocket.size(); i++){
+                    std::cout << "Sending to " << NAsocket[i] << std::endl;
+                    write(NAsocket[i], Data.comb_readD().c_str(), Data.comb_readD().size());
+                    std::cout << "Sent!\n";
+                }
+            } else if (Data.action==")"){
+                std::cout << "UPDATE About to find id" << std::endl;
+                if(NAstatus[socket]){ id = NAsocket[hshr(Data.data) % NAsocket.size()];}
+                else {id = NAsocket[(hshr(Data.data) + 1) % NAsocket.size()];}
+                std::cout << "Sending to " << id << std::endl;
+                write(id, Data.comb_updateF().c_str(), Data.comb_updateF().size());
+                std::cout << "Sent!\n";
+            } else if (Data.action=="#"){
+                std::cout << "Delete About to find id" << std::endl;
+                if(NAstatus[socket]){ id = NAsocket[hshr(Data.field) % NAsocket.size()];}
+                else {id = NAsocket[(hshr(Data.field) + 1) % NAsocket.size()];}
+                std::cout << "Sending to " << id << std::endl;
+                write(id, Data.comb_updateF().c_str(), Data.comb_updateF().size());
                 std::cout << "Sent!\n";
             }
         }
         mtx.unlock();
     }
-}
-
-void
-read_(int socket){
-    
 }
 
 int main(void)
@@ -208,6 +236,15 @@ int main(void)
                     if ((nbytes = read(i, buf, 4)) <= 0)
                     {
                         // got error or connection closed by client
+
+                        for(int j=0; j<NAsocket.size(); j++){
+                            if(i==NAsocket[j]){
+                                NAstatus[i]=false;
+                                std::cout<<"ERASING NA: "<<i<<std::endl;
+                                break;
+                            }
+                        }    
+                        
                         if (nbytes == 0)
                         {
                         }
@@ -230,9 +267,12 @@ int main(void)
                         buf[1] = '\0';
                         Data.action = buf;
 
+                        std::cout<<"Entering action: "<<buf<<std::endl;
+
                         switch(Data.action[0]) {
                             case '@': {
                                 NAsocket.push_back(i);
+                                NAstatus[i] = true;
                                 printf("NA creado, socket %d\n", i);
                                 break;
                             }
@@ -300,6 +340,7 @@ int main(void)
                             case '*': {
                                 mtx.lock();
 
+                                Data.action="*";
                                 nbytes = read(i, buf, 4);
                                 buf[4] = '\0';
                                 Data.szData = buf;
@@ -311,6 +352,12 @@ int main(void)
                                 buf[szD] = '\0';
                                 Data.data = buf;
                                 std::cout<<"Data: " << buf << std::endl;
+
+                                // nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                sprintf(buf, "%04d", i);
+                                Data.szField = buf;
+                                std::cout << "Socket: " << buf << std::endl;
                                 
                                 std::cout<<"before pushing"<<std::endl;
                                 queues[i].push(Data);
@@ -343,8 +390,8 @@ int main(void)
                                 //std::cout << "SZDATA: " << Data.szData << std::endl;
                                 int szD = stoi(Data.szData);
                                 
-                                std::cout << "before pushing" << std::endl;
-                                queues[i].push(Data);
+                                //std::cout << "before pushing" << std::endl;
+                                //queues[i].push(Data);
 
                                 write(szD, "0000", 4);
                                 write(szD, "%", 1);
@@ -356,6 +403,202 @@ int main(void)
                                 mtx.unlock();
                                 break;
                             }
+                            case '(': {
+                                mtx.lock();
+                                std::cout << "READ FROM NA: " << std::endl;
+
+                                nbytes = read(i, buf, 6);
+                                buf[6] = '\0';
+                                Data.szData = buf;
+                                //std::cout << "Size field: " << buf << std::endl;
+
+                                int szD = stoi(Data.szData);
+                                std::cout << "Size data: " << szD << std::endl;
+
+                                nbytes = read(i, buf, szD);
+                                buf[szD] = '\0';
+                                Data.data = buf;
+                                std::cout << "Data: " << buf << std::endl;
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szField = buf;
+                                std::cout << "Socket: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szF = stoi(Data.szField);
+                                
+                                //std::cout << "before pushing" << std::endl;
+                                //queues[i].push(Data);
+                                DataRU[szF].push(Data.data);
+                                if(DataRU[szF].size()==NAsocket.size()){
+                                    
+                                    std::string answer;
+                                    while(!DataRU[szF].empty()){
+                                        answer+=DataRU[szF].front();
+                                        DataRU[szF].pop();
+                                    }
+                                    
+                                    char szAnswer[10];
+                                    sprintf(szAnswer, "%06d", answer.length());
+                                    write(szF, "0000", 4);
+                                    write(szF, "%", 1);
+                                    write(szF, szAnswer, 6);
+                                    write(szF, answer.c_str(), answer.length());
+                                }
+                                    
+
+                                mtx.unlock();
+                                break;
+                            }
+                            case ')': {
+                                mtx.lock();
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szField = buf;
+                                std::cout << "Size Newfield: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "NewField: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Size Field: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                nbytes = read(i, buf, szD);
+                                buf[szD] = '\0';
+                                Data.data = buf;
+                                std::cout<<"Field: " << buf << std::endl;
+                                
+                                sprintf(buf, "%04d", i);
+                                Data.idClient = buf;
+                                
+                                std::cout<<"before pushing"<<std::endl;
+                                std::cout<<"Data.Field "<<Data.field<<std::endl;
+                                std::cout<<"Data.action "<<Data.action<<std::endl;
+                                queues[i].push(Data);
+                                mtx.unlock();
+                                break;
+                            }
+                            case '$':{
+                                mtx.lock();
+                                std::cout << "Update FROM NA: " << std::endl;
+
+                                nbytes = read(i, buf, 6);
+                                buf[6] = '\0';
+                                Data.szField = buf;
+                                //std::cout << "Size field: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                std::cout << "Size Newfield: " << szF << std::endl;
+
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "NewField: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Socket: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                
+                                //std::cout << "before pushing" << std::endl;
+                                //queues[i].push(Data);
+
+                                write(szD, "0000", 4);
+                                write(szD, "$", 1);
+                                write(szD, Data.szField.c_str(), 6);
+                                write(szD, Data.field.c_str(), stoi(Data.szField));
+                                    
+                                std::cout << " updated field: "<<Data.field << std::endl;
+
+                                mtx.unlock();
+                                break;
+                            }
+                            case '#': {
+                                mtx.lock();
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szField = buf;
+                                std::cout << "Size field: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "Field: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Size Data: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                nbytes = read(i, buf, szD);
+                                buf[szD] = '\0';
+                                Data.data = buf;
+                                std::cout<<"Data: " << buf << std::endl;
+                                
+                                sprintf(buf, "%04d", i);
+                                Data.idClient = buf;
+                                
+                                std::cout<<"before pushing"<<std::endl;
+                                queues[i].push(Data);
+
+                                mtx.unlock();
+                                break;
+                            }
+                            
+                            case '{': {
+                               mtx.lock();
+                                std::cout << "Delete FROM NA: " << std::endl;
+
+                                nbytes = read(i, buf, 6);
+                                buf[6] = '\0';
+                                Data.szField = buf;
+                                //std::cout << "Size field: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                std::cout << "Size field: " << szF << std::endl;
+
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "Field: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Socket: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                
+                                //std::cout << "before pushing" << std::endl;
+                                //queues[i].push(Data);
+
+                                write(szD, "0000", 4);
+                                write(szD, "{", 1);
+                                write(szD, Data.szField.c_str(), 6);
+                                write(szD, Data.field.c_str(), stoi(Data.szField));
+                                    
+                                std::cout << " deleted field: "<<Data.field << std::endl;
+
+                                mtx.unlock();
+                                break;
+                            }
+
                         }
 
                     }
