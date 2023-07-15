@@ -7,6 +7,7 @@
 #include <thread>
 #include <string>
 #include <iostream>
+#include <vector>
 
 void
 processLine(const char* word, const char* definition, int socket) 
@@ -32,7 +33,7 @@ processLine(const char* word, const char* definition, int socket)
     //printf("00001%s%s%s%s\n", szWord, word, szDef, definition);
 }
 
-//std::vector<>
+std::vector<std::thread> thrds;
 
 int main(int argc, char *argv[]) 
 {
