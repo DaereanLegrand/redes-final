@@ -27,25 +27,26 @@ std::mutex mtx;
 
 struct protocol
 {
-    std::string szField, field, szData, data, action, idClient, idpacket;
+    std::string szField, field, szData, data, action, idClient, idpacket, dof;
 
     std::string comb_create()
     {
-        return idpacket + action + szField + field + szData + data;
+        return idpacket + action + dof + szField + field + szData + data;
     }
 
     std::string comb_readF()
     {
-        return idpacket + action + szField + field + szData;
+        return idpacket + action + dof + szField + field + szData;
     }
 
     std::string comb_readD()
     {
-        return idpacket + action + szData + data + szField;
+        return idpacket + action + dof + szData + data + szField;
     }
+
     std::string comb_updateF()
     {
-        return idpacket + action + szField + field + szData + data + idClient;
+        return idpacket + action + dof + szField + field + szData + data + idClient;
     }
 };
 
@@ -53,12 +54,11 @@ int id_counter = 0;
 int NA_num = 0;
 
 std::hash<std::string> hshr;
-std::vector<std::thread> thrds;
 std::map<int, std::queue<protocol>> queues;
-std::map<std::string, int> identifier;
 std::map<int, std::queue<std::string>> DataRU;
 std::vector<int> NAsocket;
 std::map<int,bool> NAstatus;
+int totalWord, totalGlosa;
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -101,9 +101,11 @@ write_(int socket)
                 }
             } else if (Data.action==")"){
                 std::cout << "UPDATE About to find id" << std::endl;
-                if(NAstatus[socket]){ id = NAsocket[hshr(Data.data) % NAsocket.size()];}
-                else {id = NAsocket[(hshr(Data.data) + 1) % NAsocket.size()];}
+                id = NAsocket[hshr(Data.data) % NAsocket.size()];
                 std::cout << "Sending to " << id << std::endl;
+                write(id, Data.comb_updateF().c_str(), Data.comb_updateF().size());
+                id = NAsocket[(hshr(Data.data) + 1) % NAsocket.size()];
+                std::cout << "And sending to " << id << std::endl;
                 write(id, Data.comb_updateF().c_str(), Data.comb_updateF().size());
                 std::cout << "Sent!\n";
             } else if (Data.action=="#"){
@@ -113,6 +115,12 @@ write_(int socket)
                 std::cout << "Sending to " << id << std::endl;
                 write(id, Data.comb_updateF().c_str(), Data.comb_updateF().size());
                 std::cout << "Sent!\n";
+            } else if (Data.action=="|"){
+                for(int i=0; i<NAsocket.size(); i++){
+                    std::cout << "Sending to " << NAsocket[i] << std::endl;
+                    write(NAsocket[i], Data.comb_updateF().c_str(), Data.comb_updateF().size());
+                    std::cout << "Sent!\n";
+                }
             }
         }
         mtx.unlock();
@@ -233,14 +241,14 @@ int main(void)
                 else
                 {
                     // handle protocol from a client
-                    if ((nbytes = read(i, buf, 4)) <= 0)
+                    if ((nbytes = read(i, buf, 8)) <= 0)
                     {
                         // got error or connection closed by client
 
-                        for(int j=0; j<NAsocket.size(); j++){
-                            if(i==NAsocket[j]){
-                                NAstatus[i]=false;
-                                std::cout<<"ERASING NA: "<<i<<std::endl;
+                        for(int j = 0; j<NAsocket.size(); j++){
+                            if(i == NAsocket[j]){
+                                NAstatus[i] = false;
+                                std::cout << "ERASING NA: " << i << std::endl;
                                 break;
                             }
                         }    
@@ -258,16 +266,21 @@ int main(void)
                     else
                     {
                         protocol Data;
-                        buf[4] = '\0';
+                        buf[8] = '\0';
 
                         nbytes = read(i, buf, 1);
                         // std::string strid=std::to_string(id_counter++);
                         // strid.insert(0,4-strid.length(),'0');
-                        Data.idpacket = "0000";
                         buf[1] = '\0';
                         Data.action = buf;
 
-                        std::cout<<"Entering action: "<<buf<<std::endl;
+                        nbytes = read(i, buf, 1);
+                        buf[1] = '\0';
+                        Data.dof = buf;
+
+                        Data.idpacket ="00000000";
+
+                        std::cout << "Entering action: " << Data.action << std::endl;
 
                         switch(Data.action[0]) {
                             case '@': {
@@ -281,6 +294,7 @@ int main(void)
                                 //Data.action = "1";
 
                                 mtx.lock();
+
                                 nbytes = read(i, buf, 4);
                                 buf[4] = '\0';
                                 Data.szField = buf;
@@ -304,6 +318,15 @@ int main(void)
                                 Data.data = buf;
                                 std::cout<<"Data: " << buf << std::endl;
                                 
+                                if (Data.dof == "[") {
+                                    char szId[10];
+                                    sprintf(szId, "%08d", totalWord++);
+                                    Data.idpacket = szId;
+                                } else if (Data.dof == "]") {
+                                    char szId[10];
+                                    sprintf(szId, "%08d", totalGlosa++);
+                                    Data.idpacket = szId;
+                                }
                                 std::cout<<"before pushing"<<std::endl;
                                 queues[i].push(Data);
 
@@ -340,6 +363,7 @@ int main(void)
                             case '*': {
                                 mtx.lock();
 
+                                //READ DATA
                                 Data.action="*";
                                 nbytes = read(i, buf, 4);
                                 buf[4] = '\0';
@@ -367,7 +391,7 @@ int main(void)
                             }
                             case '%': {
                                 mtx.lock();
-                                std::cout << "READ FROM NA: " << std::endl;
+                                std::cout << "READ FIELD FROM NA: " << std::endl;
 
                                 nbytes = read(i, buf, 6);
                                 buf[6] = '\0';
@@ -440,7 +464,7 @@ int main(void)
                                     
                                     char szAnswer[10];
                                     sprintf(szAnswer, "%06d", answer.length());
-                                    write(szF, "0000", 4);
+                                    write(szF, "00000000", 8);
                                     write(szF, "%", 1);
                                     write(szF, szAnswer, 6);
                                     write(szF, answer.c_str(), answer.length());
@@ -453,6 +477,7 @@ int main(void)
                             case ')': {
                                 mtx.lock();
                                 
+                                //UPDATE 
                                 nbytes = read(i, buf, 4);
                                 buf[4] = '\0';
                                 Data.szField = buf;
@@ -514,7 +539,7 @@ int main(void)
                                 //std::cout << "before pushing" << std::endl;
                                 //queues[i].push(Data);
 
-                                write(szD, "0000", 4);
+                                write(szD, "00000000", 8);
                                 write(szD, "$", 1);
                                 write(szD, Data.szField.c_str(), 6);
                                 write(szD, Data.field.c_str(), stoi(Data.szField));
@@ -524,9 +549,47 @@ int main(void)
                                 mtx.unlock();
                                 break;
                             }
+                            case '|': {
+                                mtx.lock();
+                                
+                                //UPDATE 
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szField = buf;
+                                std::cout << "Size NewData: " << buf << std::endl;
+
+                                int szF = stoi(Data.szField);
+                                nbytes = read(i, buf, szF);
+                                buf[szF] = '\0';
+                                Data.field = buf;
+                                std::cout << "NewData: " << buf << std::endl;
+                                
+                                nbytes = read(i, buf, 4);
+                                buf[4] = '\0';
+                                Data.szData = buf;
+                                std::cout << "Size Data: " << buf << std::endl;
+
+                                //std::cout << "SZDATA: " << Data.szData << std::endl;
+                                int szD = stoi(Data.szData);
+                                nbytes = read(i, buf, szD);
+                                buf[szD] = '\0';
+                                Data.data = buf;
+                                std::cout<<"Data: " << buf << std::endl;
+                                
+                                sprintf(buf, "%04d", i);
+                                Data.idClient = buf;
+                                
+                                std::cout<<"before pushing"<<std::endl;
+
+                                queues[i].push(Data);
+                                mtx.unlock();
+                                break;
+                            }
                             case '#': {
                                 mtx.lock();
                                 
+                                //DELETE
+                                std::cout<<"DELETING"<<std::endl;
                                 nbytes = read(i, buf, 4);
                                 buf[4] = '\0';
                                 Data.szField = buf;
@@ -588,7 +651,7 @@ int main(void)
                                 //std::cout << "before pushing" << std::endl;
                                 //queues[i].push(Data);
 
-                                write(szD, "0000", 4);
+                                write(szD, "00000000", 8);
                                 write(szD, "{", 1);
                                 write(szD, Data.szField.c_str(), 6);
                                 write(szD, Data.field.c_str(), stoi(Data.szField));

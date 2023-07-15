@@ -21,8 +21,9 @@ processLine(const char* word, const char* definition, int socket)
     //sprintf(insert, "%04d%01d%04lu%s%04lu%s", 0, 1, wordLen, word, definitionLen, definition);
     //printf("%04d%1d%04lu%s%04lu%s", 0, 1, wordLen, word, definitionLen, definition);
 
-    write(socket, "0000", 4);
+    write(socket, "00000000", 8);
     write(socket, "+", 1);
+    write(socket, "[", 1);
     write(socket, szWord, 4);
     write(socket, word, wordLen);
     write(socket, szDef, 4);
@@ -30,6 +31,8 @@ processLine(const char* word, const char* definition, int socket)
 
     //printf("00001%s%s%s%s\n", szWord, word, szDef, definition);
 }
+
+//std::vector<>
 
 int main(int argc, char *argv[]) 
 {
@@ -72,8 +75,10 @@ int main(int argc, char *argv[])
                 processLine(word, definition, sock);
 
                 if((counterLines++ % 1000) == 0){
+
+                    
+
                     close(sock);
-                    return 1;
 
                     sock = socket(AF_INET, SOCK_STREAM, 0);
                     if (sock == -1) {
@@ -104,21 +109,57 @@ int main(int argc, char *argv[])
 
         fclose(file);
     } else {
-        if (!strcmp(argv[1], "readF")) {
-            std::cout<<"Enviando read campo: "<<std::endl;
-            char sizeF[256];
-            sprintf(sizeF, "%04d", strlen(argv[2]));
+        if (!strcmp(argv[1], "create")) {
+            size_t wordLen = strlen(argv[3]);
+            size_t definitionLen = strlen(argv[4]);
 
-            write(sock, "0000", 4);
+            char* szWord = (char*)malloc(4 * sizeof(char));
+            char* szDef = (char*)malloc(4 * sizeof(char));
+            sprintf(szWord, "%04lu", wordLen);
+            sprintf(szDef, "%04lu", definitionLen);
+
+            write(sock, "00000000", 8);
+            write(sock, "+", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout<<"Enviando create wordword: "<<std::endl;
+                write(sock, "[", 1);   
+            }
+            if (!strcmp(argv[2], "]")) {
+                std::cout<<"Enviando create glosa: "<<std::endl;
+                write(sock, "]", 1);   
+            }
+
+            write(sock, szWord, 4);
+            write(sock, argv[3], wordLen);
+            write(sock, szDef, 4);
+            write(sock, argv[4], definitionLen);
+        }            
+        if (!strcmp(argv[1], "readF")) {
+            char sizeF[256];
+            sprintf(sizeF, "%04d", strlen(argv[3]));
+
+            write(sock, "00000000", 8);
             write(sock, "&", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout<<"Enviando read campo wordword: "<<std::endl;
+                write(sock, "[", 1);   
+            }
+            
+            if (!strcmp(argv[2], "]")) {
+                std::cout<<"Enviando read campo glosa: "<<std::endl;
+                write(sock, "]", 1);   
+            }
+
             write(sock, sizeF, 4);
-            write(sock, argv[2], strlen(argv[2]));
+            write(sock, argv[3], strlen(argv[3]));
 
             int nbytes;
             char buf[32768];
             while (true) {
-                if (!(nbytes = read(sock, buf, 4)) <= 0) {
-                    buf[4] = '\0';
+                if (!(nbytes = read(sock, buf, 8)) <= 0) {
+                    buf[8] = '\0';
 
                     nbytes = read(sock, buf, 1);
                     buf[1] = '\0';
@@ -140,20 +181,30 @@ int main(int argc, char *argv[])
         if (!strcmp(argv[1], "readD")) {
             std::cout<<"Enviando read data: "<<std::endl;
             char sizeF[256];
-            sprintf(sizeF, "%04d", strlen(argv[2]));
+            sprintf(sizeF, "%04d", strlen(argv[3]));
 
-            write(sock, "0000", 4);
+            write(sock, "00000000", 8);
             write(sock, "*", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout<<"Enviando read data wordword: "<<std::endl;
+                write(sock, "[", 1);   
+            }
+            if (!strcmp(argv[2], "]")) {
+                std::cout<<"Enviando read data glosa: "<<std::endl;
+                write(sock, "]", 1);   
+            }
+
             write(sock, sizeF, 4);
-            write(sock, argv[2], strlen(argv[2]));
+            write(sock, argv[3], strlen(argv[3]));
 
             std::cout<<"Size: "<<sizeF<<" Argv: "<<argv[2]<<std::endl;
 
             int nbytes;
             char buf[32768];
             while (true) {
-                if (!(nbytes = read(sock, buf, 4)) <= 0) {
-                    buf[4] = '\0';
+                if (!(nbytes = read(sock, buf, 8)) <= 0) {
+                    buf[8] = '\0';
 
                     nbytes = read(sock, buf, 1);
                     buf[1] = '\0';
@@ -176,21 +227,78 @@ int main(int argc, char *argv[])
             std::cout<<"Enviando update Field: "<<std::endl;
             char sizeF[256];
             char sizeF2[256];
-            sprintf(sizeF, "%04d", strlen(argv[2]));
-            sprintf(sizeF2, "%04d", strlen(argv[3]));
-
-            write(sock, "0000", 4);
+            sprintf(sizeF, "%04d", strlen(argv[3]));
+            sprintf(sizeF2, "%04d", strlen(argv[4]));
+            
+            write(sock, "00000000", 8);
             write(sock, ")", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout<<"Enviando update field wordword: "<<std::endl;
+                write(sock, "[", 1);   
+            }
+            if (!strcmp(argv[2], "]")) {
+                std::cout<<"Enviando update field glosa: "<<std::endl;
+                write(sock, "]", 1);   
+            }
+
             write(sock, sizeF, 4);
-            write(sock, argv[2], strlen(argv[2]));
-            write(sock, sizeF2, 4);
             write(sock, argv[3], strlen(argv[3]));
+            write(sock, sizeF2, 4);
+            write(sock, argv[4], strlen(argv[4]));
 
             int nbytes;
             char buf[32768];
             while (true) {
-                if (!(nbytes = read(sock, buf, 4)) <= 0) {
-                    buf[4] = '\0';
+                if (!(nbytes = read(sock, buf, 8)) <= 0) {
+                    buf[8] = '\0';
+
+                    nbytes = read(sock, buf, 1);
+                    buf[1] = '\0';
+
+                    nbytes = read(sock, buf, 6);
+                    buf[6] = '\0';
+                    char *szData = buf;
+                    
+                    printf("SZField: %s\n", szData);
+
+                    int szD = std::stoi(szData);
+                    nbytes = read(sock, buf, szD);
+                    buf[szD] = '\0';
+                    char *data = buf;
+                    printf("Updated: %s\n", data);
+                }
+            }
+        }
+        if (!strcmp(argv[1], "updateD")) {
+            std::cout<<"Enviando update Data: "<<std::endl;
+            char sizeF[256];
+            char sizeF2[256];
+            sprintf(sizeF, "%04d", strlen(argv[3]));
+            sprintf(sizeF2, "%04d", strlen(argv[4]));
+            
+            write(sock, "00000000", 8);
+            write(sock, "|", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout<<"Enviando update data wordword: "<<std::endl;
+                write(sock, "[", 1);   
+            }
+            if (!strcmp(argv[2], "]")) {
+                std::cout<<"Enviando update data glosa: "<<std::endl;
+                write(sock, "]", 1);   
+            }
+
+            write(sock, sizeF, 4);
+            write(sock, argv[3], strlen(argv[3]));
+            write(sock, sizeF2, 4);
+            write(sock, argv[4], strlen(argv[4]));
+
+            int nbytes;
+            char buf[32768];
+            while (true) {
+                if (!(nbytes = read(sock, buf, 8)) <= 0) {
+                    buf[8] = '\0';
 
                     nbytes = read(sock, buf, 1);
                     buf[1] = '\0';
@@ -213,21 +321,31 @@ int main(int argc, char *argv[])
             std::cout<<"Enviando delete: "<<std::endl;
             char sizeF[256];
             char sizeF2[256];
-            sprintf(sizeF, "%04d", strlen(argv[2]));
-            sprintf(sizeF2, "%04d", strlen(argv[3]));
-
-            write(sock, "0000", 4);
+            sprintf(sizeF, "%04d", strlen(argv[3]));
+            sprintf(sizeF2, "%04d", strlen(argv[4]));
+            
+            write(sock, "00000000", 8);
             write(sock, "#", 1);
+
+            if (!strcmp(argv[2], "[")) {
+                std::cout << "Enviando delete wordword: " << std::endl;
+                write(sock, "[", 1);   
+            }
+            if (!strcmp(argv[2], "]")) {
+                std::cout << "Enviando delete glosa: " << std::endl;
+                write(sock, "]", 1);   
+            }
+
             write(sock, sizeF, 4);
-            write(sock, argv[2], strlen(argv[2]));
-            write(sock, sizeF2, 4);
             write(sock, argv[3], strlen(argv[3]));
+            write(sock, sizeF2, 4);
+            write(sock, argv[4], strlen(argv[4]));
 
             int nbytes;
             char buf[32768];
             while (true) {
-                if (!(nbytes = read(sock, buf, 4)) <= 0) {
-                    buf[4] = '\0';
+                if (!(nbytes = read(sock, buf, 8)) <= 0) {
+                    buf[8] = '\0';
 
                     nbytes = read(sock, buf, 1);
                     buf[1] = '\0';
