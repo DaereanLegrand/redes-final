@@ -75,9 +75,6 @@ int main(int argc, char *argv[])
                 processLine(word, definition, sock);
 
                 if((counterLines++ % 1000) == 0){
-
-                    
-
                     close(sock);
 
                     sock = socket(AF_INET, SOCK_STREAM, 0);
